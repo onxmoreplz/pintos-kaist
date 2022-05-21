@@ -92,6 +92,8 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 
+	int64_t wakeup_tick; // 꺠어나야 할 tick 저장
+
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
@@ -142,5 +144,11 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
+
+/* Alarm Clock 구현을 위한 함수 추가 */
+void thread_sleep(int64_t ticks); /* 실행 중인 스레드를 슬립으로 만듬 */
+void thread_awake(int64_t ticks); /* 슬립큐에서 깨워야할 스레드를 깨움 */
+void update_next_tick_to_awake(int64_t ticks); /* 최소 틱을 가진 스레드 저장 */
+int64_t get_next_tick_to_awake(void); /* thread.c의 next_tick_to_awake 반환 */
 
 #endif /* threads/thread.h */
