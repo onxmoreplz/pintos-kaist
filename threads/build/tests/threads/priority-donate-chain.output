@@ -20,7 +20,15 @@ Executing 'priority-donate-chain':
 (priority-donate-chain) end
 Execution of 'priority-donate-chain' complete.
 Timer: 26 ticks
-Thread: 0 idle ticks, 26 kernel ticks, 0 user ticks
+Thread: 0 idle ticks, 27 kernel ticks, 0 user ticks
 Console: 1079 characters output
 Keyboard: 0 keys pressed
 Powering off...
+Kernel PANIC at ../../lib/kernel/list.c:158 in list_insert(): assertion `is_interior (before) || is_tail (before)' failed.
+Call stack: 0x8004213421 0x800421396a 0x8004213c12 0x800420997d 0x8004209dde 0x8004219780 0x80042073d2.
+The `backtrace' program can make call stacks useful.
+Read "Backtraces" in the "Debugging Tools" chapter
+of the Pintos documentation for more information.
+Timer: 28 ticks
+Thread: 0 idle ticks, 28 kernel ticks, 0 user ticks
+Console: 1
