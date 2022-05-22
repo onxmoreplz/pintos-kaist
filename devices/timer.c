@@ -89,13 +89,16 @@ int64_t timer_elapsed(int64_t then)
 }
 
 /* Suspends execution for approximately TICKS timer ticks. */
-void timer_sleep(int64_t ticks)
+void timer_sleep(int64_t ticks_sleep)
 {
 	int64_t start = timer_ticks();
 
 	ASSERT(intr_get_level() == INTR_ON);
-	while (timer_elapsed(start) < ticks)
-		thread_yield();
+	// while (timer_elapsed(start) < ticks_sleep)
+	// 	thread_yield();
+
+	/* thread를 sleep_list에 삽입 */
+	thread_sleep(start + ticks_sleep);
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -128,11 +131,12 @@ void timer_print_stats(void)
  *  sleep_queue에서 깨어날 thread가 있는지 확인
  * 	sleep_queue에서 가장 빨리 깨어날 thread의 tick값 확인
  */
-static void
-timer_interrupt(struct intr_frame *args UNUSED)
+static void timer_interrupt(struct intr_frame *args UNUSED)
 {
 	ticks++;
 	thread_tick();
+
+	thread_awake(ticks); // 매 tick마다 sleep_list에서 꺠어날 Thread 있는지 확인, 꺠우는 함수 호출
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

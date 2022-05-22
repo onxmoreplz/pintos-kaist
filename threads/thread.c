@@ -67,6 +67,12 @@ static void do_schedule(int status);
 static void schedule(void);
 static tid_t allocate_tid(void);
 
+/* Alarm Clock 구현을 위한 함수 추가 */
+void thread_sleep(int64_t ticks);			   /* 실행 중인 스레드를 슬립으로 만듬 */
+void thread_awake(int64_t ticks);			   /* 슬립큐에서 깨워야할 스레드를 깨움 */
+void update_next_tick_to_awake(int64_t ticks); /* 최소 틱을 가진 스레드 저장 */
+int64_t get_next_tick_to_awake(void);		   /* thread.c의 next_tick_to_awake 반환 */
+
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
 
@@ -250,8 +256,7 @@ void thread_unblock(struct thread *t)
 }
 
 /* Returns the name of the running thread. */
-const char *
-thread_name(void)
+const char *thread_name(void)
 {
 	return thread_current()->name;
 }
@@ -259,8 +264,7 @@ thread_name(void)
 /* Returns the running thread.
    This is running_thread() plus a couple of sanity checks.
    See the big comment at the top of thread.h for details. */
-struct thread *
-thread_current(void)
+struct thread *thread_current(void)
 {
 	struct thread *t = running_thread();
 
@@ -312,6 +316,66 @@ void thread_yield(void)
 		list_push_back(&ready_list, &curr->elem);
 	do_schedule(THREAD_READY);
 	intr_set_level(old_level);
+}
+
+/**
+ * thread_sleep - alarm clock 구현을 위해
+*/
+void thread_sleep(int64_t ticks_thread_sleep)
+{
+	struct thread *curr = thread_current();
+	enum intr_level old_level;
+
+	ASSERT(!intr_context());
+
+	old_level = intr_disable(); // 현재 스레드가 idle 스레드가 아닐 경우
+	if (curr != idle_thread)
+	{
+		curr->status = THREAD_BLOCKED;			  // thread의 상태를 BLOCKED로 바꿈
+		curr->wakeup_tick = ticks_thread_sleep;	  // 깨워나야할 ticks 값 저장
+		list_push_back(&sleep_list, &curr->elem); // 슬립 큐에 삽입
+		thread_awake(ticks_thread_sleep);		  //  awake함수가 실행되어야 할 tick값을 update   <- 이거 인자값 ticks 아닐듯
+	}
+	do_schedule(THREAD_READY);
+	intr_set_level(old_level);
+}
+
+/**
+ * thread_awake - sleep_list에서 현재 ticks 기준으로 깨워야 할 스레드 깨움
+*/
+void thread_awake(int64_t ticks_curr)
+{
+	struct list_elem *it = list_begin(&sleep_list);
+	while (it != list_end(&sleep_list))
+	{
+		struct thread *curr_thread = list_entry(it, struct thread, elem); // list_entry 의미 파악
+		int64_t wakeup_tick = curr_thread->wakeup_tick;
+		if (ticks_curr >= wakeup_tick)
+		{
+			it = list_remove(it);
+			thread_unblock(curr_thread);
+		}
+		else
+		{
+			update_next_tick_to_awake(ticks_curr);
+		}
+	}
+}
+
+/**
+ * update_next_tick_to_awake - next_tick_to_awake
+*/
+void update_next_tick_to_awake(int64_t ticks)
+{
+	/* next_tick_to_awake 가 깨워야 할 스레드중 가장 작은 tick을 갖도록 업데이트 한다 */
+}
+
+/**
+ * get_next_tick_to_awake - 
+*/
+int64_t get_next_tick_to_awake(void)
+{
+	return next_tick_to_awake;
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
@@ -542,15 +606,13 @@ thread_launch(struct thread *th)
  * This function modify current thread's status to status and then
  * finds another thread to run and switches to it.
  * It's not safe to call printf() in the schedule(). */
-static void
-do_schedule(int status)
+static void do_schedule(int status)
 {
 	ASSERT(intr_get_level() == INTR_OFF);
 	ASSERT(thread_current()->status == THREAD_RUNNING);
 	while (!list_empty(&destruction_req))
 	{
-		struct thread *victim =
-			list_entry(list_pop_front(&destruction_req), struct thread, elem);
+		struct thread *victim = list_entry(list_pop_front(&destruction_req), struct thread, elem);
 		palloc_free_page(victim);
 	}
 	thread_current()->status = status;

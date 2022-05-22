@@ -54,8 +54,7 @@ is_tail (struct list_elem *elem) {
 }
 
 /* Initializes LIST as an empty list. */
-void
-list_init (struct list *list) {
+void list_init (struct list *list) {
 	ASSERT (list != NULL);
 	list->head.prev = NULL;
 	list->head.next = &list->tail;
@@ -64,8 +63,7 @@ list_init (struct list *list) {
 }
 
 /* Returns the beginning of LIST.  */
-struct list_elem *
-list_begin (struct list *list) {
+struct list_elem * list_begin (struct list *list) {
 	ASSERT (list != NULL);
 	return list->head.next;
 }
@@ -73,8 +71,7 @@ list_begin (struct list *list) {
 /* Returns the element after ELEM in its list.  If ELEM is the
    last element in its list, returns the list tail.  Results are
    undefined if ELEM is itself a list tail. */
-struct list_elem *
-list_next (struct list_elem *elem) {
+struct list_elem * list_next (struct list_elem *elem) {
 	ASSERT (is_head (elem) || is_interior (elem));
 	return elem->next;
 }
@@ -84,8 +81,7 @@ list_next (struct list_elem *elem) {
    list_end() is often used in iterating through a list from
    front to back.  See the big comment at the top of list.h for
    an example. */
-struct list_elem *
-list_end (struct list *list) {
+struct list_elem * list_end (struct list *list) {
 	ASSERT (list != NULL);
 	return &list->tail;
 }
@@ -237,8 +233,7 @@ struct list_elem *e = list_pop_front (&list);
 ...do something with e...
 }
 */
-struct list_elem *
-list_remove (struct list_elem *elem) {
+struct list_elem * list_remove (struct list_elem *elem) {
 	ASSERT (is_interior (elem));
 	elem->prev->next = elem->next;
 	elem->next->prev = elem->prev;
