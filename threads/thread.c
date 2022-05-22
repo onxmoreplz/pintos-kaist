@@ -47,6 +47,8 @@ static long long idle_ticks;   /* # of timer ticks spent idle. */
 static long long kernel_ticks; /* # of timer ticks in kernel threads. */
 static long long user_ticks;   /* # of timer ticks in user programs. */
 
+static long long next_tick_to_awake; // Project 1
+
 /* Scheduling. */
 #define TIME_SLICE 4		  /* # of timer ticks to give each thread. */
 static unsigned thread_ticks; /* # of timer ticks since last yield. */
@@ -58,7 +60,7 @@ bool thread_mlfqs;
 
 /******************************* Project 1 ********************************/
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
-int64_t next_tick_to_awake; // wakeup_tick 값 중 최소값 저장하기 위한 변수
+static int64_t next_tick_to_awake; // wakeup_tick 값 중 최소값 저장하기 위한 변수
 /**************************************************************************/
 
 static void kernel_thread(thread_func *, void *aux);
@@ -312,7 +314,7 @@ void thread_exit(void)
 
 /* Yields the CPU.  The current thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
-void thread_yield(void)
+void thread_yield(void)rm
 {
 	struct thread *curr = thread_current();
 	enum intr_level old_level;
