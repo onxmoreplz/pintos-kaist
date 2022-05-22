@@ -56,7 +56,10 @@ static unsigned thread_ticks; /* # of timer ticks since last yield. */
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
 
+/******************************* Project 1 ********************************/
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
 int64_t next_tick_to_awake; // wakeup_tick 값 중 최소값 저장하기 위한 변수
+/**************************************************************************/
 
 static void kernel_thread(thread_func *, void *aux);
 
@@ -67,11 +70,13 @@ static void do_schedule(int status);
 static void schedule(void);
 static tid_t allocate_tid(void);
 
+/******************************* Project 1 ********************************/
 /* Alarm Clock 구현을 위한 함수 추가 */
 void thread_sleep(int64_t ticks);			   /* 실행 중인 스레드를 슬립으로 만듬 */
 void thread_awake(int64_t ticks);			   /* 슬립큐에서 깨워야할 스레드를 깨움 */
-void update_next_tick_to_awake(int64_t ticks); /* 최소 틱을 가진 스레드 저장 */
+void update_next_tick_to_awake(int64_t ticks); /* 최소 ticks를 가진 스레드 저장 */
 int64_t get_next_tick_to_awake(void);		   /* thread.c의 next_tick_to_awake 반환 */
+/**************************************************************************/
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -118,7 +123,10 @@ void thread_init(void)
 	list_init(&ready_list);
 	list_init(&destruction_req);
 
-	list_init(&sleep_list); // sleep_list 자료구조 초기화
+	/******************************* Project 1 ********************************/
+	list_init(&sleep_list);			// sleep_list 자료구조 초기화
+	next_tick_to_awake = INT64_MAX; // sleep_list 안에서 깨어나야할 시간이 가장 작은 값
+	/**************************************************************************/
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread();
@@ -319,25 +327,25 @@ void thread_yield(void)
 }
 
 /**
- * thread_sleep - alarm clock 구현을 위해
+ * thread_sleep - 스레드를 ticks_thread_sleep 만큼 재우는 함수
 */
 void thread_sleep(int64_t ticks_thread_sleep)
 {
 	struct thread *curr = thread_current();
-	enum intr_level old_level;
 
+	enum intr_level old_level;// 현재 인터럽트 레벨 저장
 	ASSERT(!intr_context());
+	old_level = intr_disable();// 인터럽트 금지 시킴(sleep_list 로 삽입하는 도중 인터럽트 방지)
 
-	old_level = intr_disable(); // 현재 스레드가 idle 스레드가 아닐 경우
-	if (curr != idle_thread)
+	curr->wakeup_tick = ticks_thread_sleep; // 깨워나야할 ticks 값 저장
+
+	if (curr != idle_thread) // 현재 스레드가 idle 스레드가 아닐 경우
 	{
-		curr->status = THREAD_BLOCKED;			  // thread의 상태를 BLOCKED로 바꿈
-		curr->wakeup_tick = ticks_thread_sleep;	  // 깨워나야할 ticks 값 저장
 		list_push_back(&sleep_list, &curr->elem); // 슬립 큐에 삽입
-		thread_awake(ticks_thread_sleep);		  //  awake함수가 실행되어야 할 tick값을 update   <- 이거 인자값 ticks 아닐듯
 	}
-	do_schedule(THREAD_READY);
-	intr_set_level(old_level);
+	update_next_tick_to_awake(ticks_thread_sleep);
+	do_schedule(THREAD_BLOCKED);
+	intr_set_level(old_level);// 인터럽트를 다시 받아들이도록 수정
 }
 
 /**
@@ -345,29 +353,32 @@ void thread_sleep(int64_t ticks_thread_sleep)
 */
 void thread_awake(int64_t ticks_curr)
 {
-	struct list_elem *it = list_begin(&sleep_list);
-	while (it != list_end(&sleep_list))
+	next_tick_to_awake = INT64_MAX;
+	struct list_elem *temp_elem = list_begin(&sleep_list);
+	struct thread *curr_thread;
+
+	for (temp_elem; temp_elem != list_end(&sleep_list);)
 	{
-		struct thread *curr_thread = list_entry(it, struct thread, elem); // list_entry 의미 파악
-		int64_t wakeup_tick = curr_thread->wakeup_tick;
-		if (ticks_curr >= wakeup_tick)
+		curr_thread = list_entry(temp_elem, struct thread, elem); // list_entry 의미 파악
+		if (curr_thread->wakeup_tick <= ticks_curr)
 		{
-			it = list_remove(it);
+			temp_elem = list_remove(&curr_thread->elem);
 			thread_unblock(curr_thread);
 		}
 		else
 		{
-			update_next_tick_to_awake(ticks_curr);
+			update_next_tick_to_awake(curr_thread->wakeup_tick);
+			temp_elem = list_next(temp_elem);
 		}
 	}
 }
 
 /**
- * update_next_tick_to_awake - next_tick_to_awake
+ * update_next_tick_to_awake - next_tick_to_awake 가 깨워야 할 스레드중 가장 작은 tick을 갖도록 업데이트
 */
 void update_next_tick_to_awake(int64_t ticks)
 {
-	/* next_tick_to_awake 가 깨워야 할 스레드중 가장 작은 tick을 갖도록 업데이트 한다 */
+	next_tick_to_awake = MIN(next_tick_to_awake, ticks);
 }
 
 /**

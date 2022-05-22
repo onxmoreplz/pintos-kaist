@@ -88,14 +88,16 @@ int64_t timer_elapsed(int64_t then)
 	return timer_ticks() - then;
 }
 
-/* Suspends execution for approximately TICKS timer ticks. */
+/* timer_sleep - ticks_sleep만큼 해당 스레드를 활성화시키지 않는다. 
+ * 				그 사이에 다른 스레드가 CPU를 사용하는 것이 가능해진다. 
+ */
 void timer_sleep(int64_t ticks_sleep)
 {
 	int64_t start = timer_ticks();
 
 	ASSERT(intr_get_level() == INTR_ON);
-	// while (timer_elapsed(start) < ticks_sleep)
-	// 	thread_yield();
+	while (timer_elapsed(start) < ticks_sleep)
+		thread_yield();
 
 	/* thread를 sleep_list에 삽입 */
 	thread_sleep(start + ticks_sleep);
@@ -136,7 +138,12 @@ static void timer_interrupt(struct intr_frame *args UNUSED)
 	ticks++;
 	thread_tick();
 
-	thread_awake(ticks); // 매 tick마다 sleep_list에서 꺠어날 Thread 있는지 확인, 꺠우는 함수 호출
+	int64_t min_tick_in_sleep_list = get_next_tick_to_awake(); 
+
+	if (ticks >= min_tick_in_sleep_list)
+	{
+		thread_awake(ticks); // 매 tick마다 sleep_list에서 꺠어날 Thread 있는지 확인, 꺠우는 함수 호출
+	}
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
