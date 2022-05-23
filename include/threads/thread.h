@@ -151,4 +151,7 @@ void thread_awake(int64_t ticks); /* 슬립큐에서 깨워야할 스레드를 �
 void update_next_tick_to_awake(int64_t ticks); /* 최소 틱을 가진 스레드 저장 */
 int64_t get_next_tick_to_awake(void); /* thread.c의 next_tick_to_awake 반환 */
 
+/* Priority Scheduling 구현을 위한 함수 추가 */
+bool thread_cmp_priority (struct list_elem *a, struct list_elem *b, void *aux UNUSED);
+
 #endif /* threads/thread.h */

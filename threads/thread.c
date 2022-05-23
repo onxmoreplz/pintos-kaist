@@ -220,6 +220,7 @@ tid_t thread_create(const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock(t);
+	thread_test_preemption();
 
 	return tid;
 }
@@ -254,7 +255,8 @@ void thread_unblock(struct thread *t)
 
 	old_level = intr_disable();
 	ASSERT(t->status == THREAD_BLOCKED);
-	list_push_back(&ready_list, &t->elem);
+	// list_push_back(&ready_list, &t->elem);
+	list_insert_ordered(&ready_list, &t->elem, thread_cmp_priority, 0);
 	t->status = THREAD_READY;
 	intr_set_level(old_level);
 }
@@ -317,7 +319,10 @@ void thread_yield(void)
 
 	old_level = intr_disable();
 	if (curr != idle_thread)
-		list_push_back(&ready_list, &curr->elem);
+	{
+		// list_push_back(&ready_list, &curr->elem);
+		list_insert_ordered(&ready_list, &curr->elem, thread_cmp_priority, 0);
+	}
 	do_schedule(THREAD_READY);
 	intr_set_level(old_level);
 }
@@ -370,6 +375,26 @@ void thread_awake(int64_t ticks_curr)
 }
 
 /**
+ * thread_cmp_priority - 
+*/
+bool thread_cmp_priority (struct list_elem *a, struct list_elem *b, void *aux UNUSED)
+{
+	return list_entry(a, struct thread, elem)->priority > list_entry(b, struct thread, elem)->priority;
+}
+
+/**
+ * thread_test_preemption - ready_list의 가장 앞에있는 스레드의 우선순위와 현재 running상태 스레드와 우선순위 비교
+*/
+void thread_test_preemption(void)
+{
+	if(!list_empty(&ready_list) 
+	&& thread_current()->priority < list_entry(list_front(&ready_list), struct thread, elem)->priority)
+	{
+		thread_yield();
+	}
+}
+
+/**
  * update_next_tick_to_awake - next_tick_to_awake
 */
 void update_next_tick_to_awake(int64_t ticks)
@@ -390,6 +415,7 @@ int64_t get_next_tick_to_awake(void)
 void thread_set_priority(int new_priority)
 {
 	thread_current()->priority = new_priority;
+	thread_test_preemption(); // 추가(Priority Scheduling)
 }
 
 /* Returns the current thread's priority. */
@@ -500,8 +526,7 @@ init_thread(struct thread *t, const char *name, int priority)
    empty.  (If the running thread can continue running, then it
    will be in the run queue.)  If the run queue is empty, return
    idle_thread. */
-static struct thread *
-next_thread_to_run(void)
+static struct thread * next_thread_to_run(void)
 {
 	if (list_empty(&ready_list))
 		return idle_thread;
