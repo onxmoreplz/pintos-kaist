@@ -77,6 +77,10 @@ void thread_awake(int64_t ticks);			   /* 슬립큐에서 깨워야할 스레드
 void update_next_tick_to_awake(int64_t ticks); /* 최소 틱을 가진 스레드 저장 */
 int64_t get_next_tick_to_awake(void);		   /* thread.c의 next_tick_to_awake 반환 */
 
+/*pintos project1-7_1*/
+void test_max_priority(void);
+bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
 
@@ -221,6 +225,11 @@ tid_t thread_create(const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock(t);
 
+	/*pintos project1-7_1*/
+	/*생성된 스레드의 우선순위가 현재 실행중인 스레드의 우선순위보다 높다면 CPU를 양보*/
+	if (t->priority > thread_current()->priority)
+		thread_yield(); //t의 우선순위가 더 크면 thread_yield함수를 실행해 cpu 양보
+
 	return tid;
 }
 
@@ -254,9 +263,28 @@ void thread_unblock(struct thread *t)
 
 	old_level = intr_disable();
 	ASSERT(t->status == THREAD_BLOCKED);
-	list_push_back(&ready_list, &t->elem);
+	// list_push_back(&ready_list, &t->elem); //pintos project1에서 했던 코드인데, 이건 그냥 맨 끝에 추가인 코드임
+	list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL); /*pintos project1-7_1*/
+	// → thread unblock될 때 우선순위 순으로 정렬되어 ready_list에 삽입되도록 수정
 	t->status = THREAD_READY;
 	intr_set_level(old_level);
+}
+
+/*pintos project1-7_1*/
+bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
+	/*list_insert_ordered 함수에서 사용하기 위한 정렬 방법을 결정하는 함수 작성*/
+	struct thread *thread_a = list_entry(a, struct thread, elem);
+	struct thread *thread_b = list_entry(b, struct thread, elem);
+	// 두 스레드를 각각 받아 우선순위를 비교하는 cmp_priority 함수를 추가
+
+	if(thread_a != NULL && thread_b != NULL){
+		if (thread_a->priority > thread_b->priority)
+			return true; //a의 우선순위가 높으면 1을
+		else
+			return false; //b의 우선순위가 높은 0을 리턴
+	}
+
+	return false;
 }
 
 /* Returns the name of the running thread. */
@@ -317,7 +345,10 @@ void thread_yield(void)
 
 	old_level = intr_disable();
 	if (curr != idle_thread)
-		list_push_back(&ready_list, &curr->elem);
+		// list_push_back(&ready_list, &curr->elem); //pintos project1에서 사용하던 기존 코드 수정
+		list_insert_ordered(&ready_list, &curr->elem, cmp_priority,NULL); /*pintos project1-7_1*/
+		// → 현재 수행중인 스레드가 cpu를 양보할 때도 마찬가지로 수정해 우선순위에 따라 정렬되어 삽입
+		// 이때 사용한 cmp_priority 함수는 ready_list의 우선순위가 높으면1, curr.elem의 우선순위가 높으면 0 반환
 	do_schedule(THREAD_READY);
 	intr_set_level(old_level);
 }
@@ -389,7 +420,36 @@ int64_t get_next_tick_to_awake(void)
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority)
 {
-	thread_current()->priority = new_priority;
+	// thread_current()->priority = new_priority;
+	// → 기존 코드 = 단순히 새로운 우선순위 값을 스레드에 쓰는 방식을 아래와 같이 수정
+
+	/*project1-7_1
+	스레드가 우선순위가 변경되었을 때 우선순위에 따라 선점이 발생하도록*/
+	if(!thread_mlfqs){ //우선순위가 조정되는 mlfqs가 발생하면
+		int previous_priority = thread_current()->priority; // 현재 우선순위 값을
+		thread_current()->priority = new_priority; // 새로 받은 new_priority로 변경
+
+		if(thread_current()->priority < previous_priority) //만약 현재 cpu에서 수행중인 스레드의 우선순위가 낮아졌다면
+			test_max_priority(); //ready_list의 스레드들과 우선순위를 비교할 수 있게 test_max_priority 함수를 호출
+	}
+}
+
+/*project1-7_1*/
+void test_max_priority(void){
+	/*ready_list에서 우선순위가 가장 높은 스레드와 현재 스레드의 우선순위를 비교해 스케줄링
+	(ready_list가 비어있지 않은지 확인)*/
+	struct thread *cp = thread_current(); //cp는 현재 cpu에서 수행중인 스레드
+	struct thread *first_thread; //ready_list의 맨 앞에 있는 스레드
+
+	if(list_empty(&ready_list))
+		return;
+
+	first_thread = list_entry(list_front(&ready_list), struct thread, elem);
+	// → 앞선 코드에서 ready_list 삽입 방식을 우선순위 값에 따라 정렬하여 넣는 것으로 수정했기에,
+	// first_thread가 곧 ready_list의 모든 thread 중 가장 높은 우선순위를 가진 thread
+
+	if(cp->priority < first_thread->priority) //cp와 first를 비교해 first의 우선순위가 더 높으면
+		thread_yield(); //cpu를 양보하는 yield함수를 호출
 }
 
 /* Returns the current thread's priority. */
