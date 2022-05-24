@@ -91,6 +91,11 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+	/* pintos project9 */
+	int init_priority; //donation 이후 우선순위를 초기화하기 위해 초기값 저장
+	struct lock *wait_on_lock; //해당 스레드가 대기하고 있는 lock 자료구조의 주소를 저장
+	struct list donations; //multiple donation을 고려하기 위해 사용
+	struct list_elem donation_elem; //multiple donation을 고려하기 위해 사용
 
 	int64_t wakeup_tick; // 꺠어나야 할 tick 저장
 
@@ -152,8 +157,14 @@ void thread_awake(int64_t ticks); /* 슬립큐에서 깨워야할 스레드를 �
 void update_next_tick_to_awake(int64_t ticks); /* 최소 틱을 가진 스레드 저장 */
 int64_t get_next_tick_to_awake(void); /* thread.c의 next_tick_to_awake 반환 */
 
-/* pintos project1-7_1 */
+/* pintos project7 */
 void test_max_priority(void); /*현재 수행중인 스레드와 가장 높은 우선순위의 스레드의 우선순위를 비교해 스케줄링*/
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED); /*인자로 주어진 스레드들의 우선순위를 비교*/
+
+/* pintos project9 */
+void donate_priority(void);
+void remove_with_lock(struct lock *lock);
+void refresh_priority(void);
+bool thread_compare_donate_priority(const struct list_elem *l, const struct list_elem *s, void *aux UNUSED);
 
 #endif /* threads/thread.h */

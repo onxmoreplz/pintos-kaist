@@ -77,9 +77,13 @@ void thread_awake(int64_t ticks);			   /* 슬립큐에서 깨워야할 스레드
 void update_next_tick_to_awake(int64_t ticks); /* 최소 틱을 가진 스레드 저장 */
 int64_t get_next_tick_to_awake(void);		   /* thread.c의 next_tick_to_awake 반환 */
 
-/*pintos project1-7_1*/
+/*pintos project7*/
 void test_max_priority(void);
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
+/*pintos project9*/
+bool thread_compare_donate_priority(const struct list_elem *l, const struct list_elem *s, void *aux UNUSED);
+void remove_with_lock (struct lock *lock);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -225,7 +229,7 @@ tid_t thread_create(const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock(t);
 
-	/*pintos project1-7_1*/
+	/*pintos project7*/
 	/*생성된 스레드의 우선순위가 현재 실행중인 스레드의 우선순위보다 높다면 CPU를 양보*/
 	if (t->priority > thread_current()->priority)
 		thread_yield(); //t의 우선순위가 더 크면 thread_yield함수를 실행해 cpu 양보
@@ -264,13 +268,13 @@ void thread_unblock(struct thread *t)
 	old_level = intr_disable();
 	ASSERT(t->status == THREAD_BLOCKED);
 	// list_push_back(&ready_list, &t->elem); //pintos project1에서 했던 코드인데, 이건 그냥 맨 끝에 추가인 코드임
-	list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL); /*pintos project1-7_1*/
+	list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL); /*pintos project7*/
 	// → thread unblock될 때 우선순위 순으로 정렬되어 ready_list에 삽입되도록 수정
 	t->status = THREAD_READY;
 	intr_set_level(old_level);
 }
 
-/*pintos project1-7_1*/
+/*pintos project7*/
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
 	/*list_insert_ordered 함수에서 사용하기 위한 정렬 방법을 결정하는 함수 작성*/
 	struct thread *thread_a = list_entry(a, struct thread, elem);
@@ -346,7 +350,7 @@ void thread_yield(void)
 	old_level = intr_disable();
 	if (curr != idle_thread)
 		// list_push_back(&ready_list, &curr->elem); //pintos project1에서 사용하던 기존 코드 수정
-		list_insert_ordered(&ready_list, &curr->elem, cmp_priority,NULL); /*pintos project1-7_1*/
+		list_insert_ordered(&ready_list, &curr->elem, cmp_priority,NULL); /*pintos project7*/
 		// → 현재 수행중인 스레드가 cpu를 양보할 때도 마찬가지로 수정해 우선순위에 따라 정렬되어 삽입
 		// 이때 사용한 cmp_priority 함수는 ready_list의 우선순위가 높으면1, curr.elem의 우선순위가 높으면 0 반환
 	do_schedule(THREAD_READY);
@@ -423,18 +427,27 @@ void thread_set_priority(int new_priority)
 	// thread_current()->priority = new_priority;
 	// → 기존 코드 = 단순히 새로운 우선순위 값을 스레드에 쓰는 방식을 아래와 같이 수정
 
-	/*project1-7_1
-	스레드가 우선순위가 변경되었을 때 우선순위에 따라 선점이 발생하도록*/
-	if(!thread_mlfqs){ //우선순위가 조정되는 mlfqs가 발생하면
-		int previous_priority = thread_current()->priority; // 현재 우선순위 값을
-		thread_current()->priority = new_priority; // 새로 받은 new_priority로 변경
+	// /*project7 +
+	// 스레드가 우선순위가 변경되었을 때 우선순위에 따라 선점이 발생하도록*/
+	// if(!thread_mlfqs){ //우선순위가 조정되는 mlfqs가 발생하면
+	// 	int previous_priority = thread_current()->priority; // 현재 우선순위 값을
+	// 	thread_current()->priority = new_priority; // 새로 받은 new_priority로 변경
 
-		if(thread_current()->priority < previous_priority) //만약 현재 cpu에서 수행중인 스레드의 우선순위가 낮아졌다면
-			test_max_priority(); //ready_list의 스레드들과 우선순위를 비교할 수 있게 test_max_priority 함수를 호출
-	}
+	// 	if(thread_current()->priority < previous_priority) //만약 현재 cpu에서 수행중인 스레드의 우선순위가 낮아졌다면
+	// 		test_max_priority(); //ready_list의 스레드들과 우선순위를 비교할 수 있게 test_max_priority 함수를 호출
+	// }
+
+	/*pintos project9*/
+	/* donation 을 고려하여 thread_set_priority() 함수를 수정한다 */
+	/* refresh_priority() 함수를 사용하여 우선순위를 변경으로 인한 donation 관련 정보를 갱신한다.
+	donation_priority(), test_max_pariority() 함수를 적절히 사용하여 priority donation 을 수행하고 스케줄링 한다. */
+	thread_current()->init_priority = new_priority;
+
+	refresh_priority();
+	thread_test_preemption();
 }
 
-/*project1-7_1*/
+/*project7*/
 void test_max_priority(void){
 	/*ready_list에서 우선순위가 가장 높은 스레드와 현재 스레드의 우선순위를 비교해 스케줄링
 	(ready_list가 비어있지 않은지 확인)*/
@@ -450,6 +463,64 @@ void test_max_priority(void){
 
 	if(cp->priority < first_thread->priority) //cp와 first를 비교해 first의 우선순위가 더 높으면
 		thread_yield(); //cpu를 양보하는 yield함수를 호출
+}
+
+/*pintos project9*/
+bool thread_compare_donate_priority(const struct list_elem *l, const struct list_elem *s, void *aux UNUSED){
+	return list_entry(l, struct thread, donation_elem)->priority > list_entry(s, struct thread, donation_elem)->priority;
+}
+
+/* priority donation 을 수행하는 함수를 구현한다.
+현재 스레드가 기다리고 있는 lock 과 연결 된 모든 스레드들을 순회하며
+현재 스레드의 우선순위를 lock 을 보유하고 있는 스레드에게 기부 한다.
+(Nested donation 그림 참고, nested depth 는 8로 제한한다. ) */
+void donate_priority(void){
+	int depth;
+	struct thread *cur = thread_current();
+
+	for (depth = 0; depth < 8; depth++){
+		if(!cur->wait_on_lock)
+			break;
+		struct thread *holder = cur->wait_on_lock->holder;
+		holder->priority = cur->priority;
+		cur = holder;
+	}
+}
+
+/* lock 을 해지 했을때 donations 리스트에서 해당 엔트리를 삭제 하기 위한 함수를 구현한다. */
+/* 현재 스레드의 donations 리스트를 확인하여 해지 할 lock을 보유하고 있는 엔트리를 삭제 한다. */
+void remove_with_lock (struct lock *lock){
+	struct list_elem *e;
+	struct thread *cur = thread_current ();
+
+	for (e = list_begin (&cur->donations); e != list_end (&cur->donations); e = list_next (e)){
+		struct thread *t = list_entry (e, struct thread, donation_elem);
+		if (t->wait_on_lock == lock)
+			list_remove (&t->donation_elem);
+	}
+}
+
+/* 스레드의 우선순위가 변경 되었을때 donation 을 고려하여 우선순위를 다시 결정 하는 함수를 작성 한다. */
+/* 현재 스레드의 우선순위를 기부받기 전의 우선순위로 변경 */
+/* 가장 우선수위가 높은 donations 리스트의 스레드와 현재 스레드의 우선순위를 비교하여 높은 값을 현재 스레드의 우선순위로 설정한다. */
+void refresh_priority (void){
+	struct thread *cur = thread_current ();
+
+	cur->priority = cur->init_priority;
+  
+	if (!list_empty (&cur->donations)) {
+    	list_sort (&cur->donations, thread_compare_donate_priority, 0);
+		struct thread *front = list_entry (list_front (&cur->donations), struct thread, donation_elem);
+    	if (front->priority > cur->priority)
+    		cur->priority = front->priority;
+	}
+}
+
+/*pintos project8*/
+void thread_test_preemption (void)
+{
+    if (!list_empty (&ready_list) && thread_current ()->priority < list_entry (list_front (&ready_list), struct thread, elem)->priority)
+    	thread_yield ();
 }
 
 /* Returns the current thread's priority. */
@@ -540,9 +611,7 @@ kernel_thread(thread_func *function, void *aux)
 
 /* Does basic initialization of T as a blocked thread named
    NAME. */
-static void
-init_thread(struct thread *t, const char *name, int priority)
-{
+static void init_thread(struct thread *t, const char *name, int priority){
 	ASSERT(t != NULL);
 	ASSERT(PRI_MIN <= priority && priority <= PRI_MAX);
 	ASSERT(name != NULL);
@@ -553,6 +622,11 @@ init_thread(struct thread *t, const char *name, int priority)
 	t->tf.rsp = (uint64_t)t + PGSIZE - sizeof(void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	/*pintos project9 + Priority donation관련 자료구조 초기화*/
+	t->init_priority = priority;
+	t->wait_on_lock = NULL;
+	list_init(&t->donations);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

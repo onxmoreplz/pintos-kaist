@@ -188,14 +188,30 @@ lock_init (struct lock *lock) {
    interrupt handler.  This function may be called with
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
-void
-lock_acquire (struct lock *lock) {
+void lock_acquire (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
+	/* 해당 lock 의 holder가 존재 한다면 아래 작업을 수행한다. */
+	/* 현재 스레드의 wait_on_lock 변수에 획득 하기를 기다리는 lock의 주소를 저장 */
+	/* multiple donation 을 고려하기 위해 이전상태의 우선순위를 기억,
+	donation 을 받은 스레드의 thread 구조체를 list로 관리한다. */
+	/* priority donation 수행하기 위해 donate_priority() 함수 호출 */
+
+	struct thread *cur = thread_current();
+	if (lock->holder){
+		cur->wait_on_lock = lock;
+		list_insert_ordered(&lock->holder->donations, &cur->donation_elem, thread_compare_donate_priority, 0);
+		donate_priority();
+	}
+
 	sema_down (&lock->semaphore);
-	lock->holder = thread_current ();
+	// lock->holder = thread_current ();
+	lock->holder = cur;
+
+	/* lock을 획득 한 후 lock holder 를 갱신한다. */
+
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -223,10 +239,15 @@ lock_try_acquire (struct lock *lock) {
    An interrupt handler cannot acquire a lock, so it does not
    make sense to try to release a lock within an interrupt
    handler. */
-void
-lock_release (struct lock *lock) {
+void lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
+
+	/*pintos project9*/
+	/* remove_with_lock() 함수 추가 */
+	/* refresh_priority() 함수 추가 */
+	remove_with_lock(lock);
+	refresh_priority();
 
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
