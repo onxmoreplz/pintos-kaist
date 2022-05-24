@@ -24,7 +24,7 @@
    Do not modify this value. */
 #define THREAD_BASIC 0xd42df210
 
-#define MIN(a,b) (((a)<(b)) ? (a):(b)) // 최소를 구하는 삼항 연산자
+#define MIN(a, b) (((a) < (b)) ? (a) : (b)) // 최소를 구하는 삼항 연산자
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
@@ -77,6 +77,11 @@ void thread_awake(int64_t ticks);			   /* 슬립큐에서 깨워야할 스레드
 void update_next_tick_to_awake(int64_t ticks); /* 최소 틱을 가진 스레드 저장 */
 int64_t get_next_tick_to_awake(void);		   /* thread.c의 next_tick_to_awake 반환 */
 
+bool thread_cmp_donate_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+void donate_priority(void);
+void remove_with_lock(struct lock * lock);
+void refresh_priority(void);
+
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
 
@@ -121,7 +126,7 @@ void thread_init(void)
 	lock_init(&tid_lock);
 	list_init(&ready_list);
 	list_init(&destruction_req);
-	list_init(&sleep_list); // sleep_list 자료구조 초기화
+	list_init(&sleep_list);			// sleep_list 자료구조 초기화
 	next_tick_to_awake = INT64_MAX; //최소값을 찾기 위해 초기화를 정수 최대값으로
 
 	/* Set up a thread structure for the running thread. */
@@ -341,7 +346,8 @@ void thread_sleep(int64_t ticks)
 
 	curr->wakeup_tick = ticks;
 
-	if (curr != idle_thread){
+	if (curr != idle_thread)
+	{
 		list_push_back(&sleep_list, &curr->elem);
 	}
 	update_next_tick_to_awake(ticks);
@@ -377,9 +383,14 @@ void thread_awake(int64_t ticks_curr)
 /**
  * thread_cmp_priority - 
 */
-bool thread_cmp_priority (struct list_elem *a, struct list_elem *b, void *aux UNUSED)
+bool thread_cmp_priority(struct list_elem *a, struct list_elem *b, void *aux UNUSED)
 {
 	return list_entry(a, struct thread, elem)->priority > list_entry(b, struct thread, elem)->priority;
+}
+
+bool thread_cmp_donate_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+	return list_entry(a, struct thread, donation_elem)->priority > list_entry(b, struct thread, donation_elem)->priority;
 }
 
 /**
@@ -387,8 +398,7 @@ bool thread_cmp_priority (struct list_elem *a, struct list_elem *b, void *aux UN
 */
 void thread_test_preemption(void)
 {
-	if(!list_empty(&ready_list) 
-	&& thread_current()->priority < list_entry(list_front(&ready_list), struct thread, elem)->priority)
+	if (!list_empty(&ready_list) && thread_current()->priority < list_entry(list_front(&ready_list), struct thread, elem)->priority)
 	{
 		thread_yield();
 	}
@@ -411,10 +421,60 @@ int64_t get_next_tick_to_awake(void)
 	return next_tick_to_awake;
 }
 
+void donate_priority(void)
+{
+	int depth; //nested의 최대 깊이 지정(MAX_DEPTH = 8)
+	struct thread *curr = thread_current();
+
+	for (depth = 0; depth < 8; depth++)
+	{
+		if (!curr->wait_on_lock)
+			break;
+		struct thread *holder = curr->wait_on_lock->holder;
+		holder->priority = curr->priority;
+		curr = holder;
+	}
+}
+
+
+void remove_with_lock(struct lock * lock)
+{
+	struct list_elem *e;
+	struct thread *curr = thread_current();
+
+	for (e = list_begin(&curr->donations); e != list_end(&curr->donations); e = list_next(e))
+	{
+		struct thread *t = list_entry(e, struct thread, donation_elem);
+		if(t->wait_on_lock == lock)
+		{
+			list_remove(&t->donation_elem);
+		}
+	}
+}
+
+
+void refresh_priority(void)
+{
+	struct thread *curr = thread_current();
+	curr->priority = curr->init_priority;
+
+	if(!list_empty(&curr->donations))
+	{
+		list_sort(&curr->donations, thread_cmp_donate_priority, 0);
+		struct thread *front = list_entry(list_front(&curr->donations), struct thread, donation_elem);
+		if (front->priority > curr->priority)
+		{
+			curr->priority = front->priority;
+		}
+	}
+}
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority)
 {
-	thread_current()->priority = new_priority;
+	thread_current()->init_priority = new_priority;
+
+	refresh_priority(); // 추가(Priority Inversion)
 	thread_test_preemption(); // 추가(Priority Scheduling)
 }
 
@@ -519,6 +579,11 @@ init_thread(struct thread *t, const char *name, int priority)
 	t->tf.rsp = (uint64_t)t + PGSIZE - sizeof(void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	/* Priority Inversion */
+	t->init_priority = priority;
+	t->wait_on_lock = NULL;
+	list_init(&t->donations);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -526,7 +591,7 @@ init_thread(struct thread *t, const char *name, int priority)
    empty.  (If the running thread can continue running, then it
    will be in the run queue.)  If the run queue is empty, return
    idle_thread. */
-static struct thread * next_thread_to_run(void)
+static struct thread *next_thread_to_run(void)
 {
 	if (list_empty(&ready_list))
 		return idle_thread;
