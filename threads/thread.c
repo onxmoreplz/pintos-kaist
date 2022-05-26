@@ -398,7 +398,8 @@ bool thread_cmp_donate_priority(const struct list_elem *a, const struct list_ele
 */
 void thread_test_preemption(void)
 {
-	if (!list_empty(&ready_list) && thread_current()->priority < list_entry(list_front(&ready_list), struct thread, elem)->priority)
+	if (!list_empty(&ready_list) 
+	&& thread_current()->priority < list_entry(list_front(&ready_list), struct thread, elem)->priority)
 	{
 		thread_yield();
 	}
@@ -421,10 +422,15 @@ int64_t get_next_tick_to_awake(void)
 	return next_tick_to_awake;
 }
 
+
+/**
+ * donate_priority - 우선순위가 낮고, lock을 갖고 있는 스레드에게 
+ * 					 현재 스레드(우선순위가 높고, lock을 요청한 스레드)의 우선순위 부여
+*/
 void donate_priority(void)
 {
 	int depth; //nested의 최대 깊이 지정(MAX_DEPTH = 8)
-	struct thread *curr = thread_current();
+	struct thread *curr = thread_current(); // lock을 기다리고 있는 현재 스레드(우선순위 높은 스레드)
 
 	for (depth = 0; depth < 8; depth++)
 	{
@@ -437,6 +443,9 @@ void donate_priority(void)
 }
 
 
+/**
+ * remove_with_lock - 현재 스레드가 해당 lock을 반납할 때, dontaions에 lock을 요청한 스레드 삭제
+*/
 void remove_with_lock(struct lock * lock)
 {
 	struct list_elem *e;
@@ -444,15 +453,19 @@ void remove_with_lock(struct lock * lock)
 
 	for (e = list_begin(&curr->donations); e != list_end(&curr->donations); e = list_next(e))
 	{
-		struct thread *t = list_entry(e, struct thread, donation_elem);
-		if(t->wait_on_lock == lock)
+		struct thread *tmp_thread = list_entry(e, struct thread, donation_elem);
+		if(tmp_thread->wait_on_lock == lock)
 		{
-			list_remove(&t->donation_elem);
+			list_remove(&tmp_thread->donation_elem);
 		}
 	}
 }
 
 
+/**
+ * refresh_priority - 현재 스레드의 우선순위를 donations의 가장 큰 값을 우선순위로 update
+ * 					  donations가 비어있다면, 원래의 priority로 update
+*/
 void refresh_priority(void)
 {
 	struct thread *curr = thread_current();

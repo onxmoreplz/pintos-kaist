@@ -69,8 +69,9 @@ void sema_down(struct semaphore *sema)
 	old_level = intr_disable();
 	while (sema->value == 0)
 	{
-		// list_push_back (&sema->waiters, &thread_current ()->elem);
-		list_insert_ordered(&sema->waiters, &thread_current()->elem, thread_cmp_priority, 0);
+		list_push_back (&sema->waiters, &thread_current ()->elem); 
+		// list_insert_ordered(&sema->waiters, &thread_current()->elem, thread_cmp_priority, 0);
+		// 정렬하면서 넣어주지 않아도 되는 이유 : sema_up() 함수에서 꺼내기 전에 sema_waiters 리스트 정렬함
 		thread_block();
 	}
 	sema->value--;
@@ -203,8 +204,9 @@ void lock_init(struct lock *lock)
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
 /**
- * locak_acquire - 스레드가 lock을 요청할 때 실행
+ * lock_acquire - 스레드가 lock을 요청할 때 실행
  * 				   누군가가 해당 lock을 점유하고 있다면 자신의 priority 양도
+ *				=> acquire()한 스레드만이 해당 lock을 release() 할 수 있다.
 */
 void lock_acquire(struct lock *lock)
 {
@@ -220,7 +222,7 @@ void lock_acquire(struct lock *lock)
 			&lock->holder->donations, 
 			&curr->donation_elem,
 			thread_cmp_donate_priority, 0);
-		donate_priority();
+		donate_priority(); //lock->holder의 우선순위 donate 받음
 	}
 
 	sema_down(&lock->semaphore); // sema_down을 기점으로 lock의 소유 여부가 다름
@@ -262,7 +264,7 @@ void lock_release(struct lock *lock)
 	ASSERT(lock != NULL);
 	ASSERT(lock_held_by_current_thread(lock));
 
-	remove_with_lock(lock);
+	remove_with_lock(lock); //lock을 반납했을 때, 해당 스레드(현재 스레드) 내의 donations에서 lock 요청한 스레드 삭제
 	refresh_priority();
 
 	lock->holder = NULL;
@@ -316,11 +318,11 @@ void cond_wait(struct condition *cond, struct lock *lock)
 	ASSERT(cond != NULL);
 	ASSERT(lock != NULL);
 	ASSERT(!intr_context());
-	ASSERT(lock_held_by_current_thread(lock));
+	ASSERT(lock_held_by_current_thread(lock)); //현재 스레드가 lock을 갖고 있으면 True
 
 	sema_init(&waiter.semaphore, 0);
 	// list_push_back(&cond->waiters, &waiter.elem);
-	list_insert_ordered(&cond->waiters, &waiter.elem, sema_compare_priority, 0);
+	list_insert_ordered(&cond->waiters, &waiter.elem, sema_compare_priority, 0); // condition 변수(cond) 안에 semaphore들을 넣음
 	lock_release(lock);
 	sema_down(&waiter.semaphore);
 	lock_acquire(lock);
