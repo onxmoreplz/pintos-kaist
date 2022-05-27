@@ -6,8 +6,13 @@
 
 /* A counting semaphore. */
 struct semaphore {
+<<<<<<< HEAD
   unsigned value;      /* 공유 자원의 개수 */
   struct list waiters; /* List of waiting threads. */
+=======
+	unsigned value;             /* 공유 자원의 개수 */
+	struct list waiters;        /* List of waiting threads. */
+>>>>>>> 0984309b8ae8f80b6e36b72e57738cd237b05f88
 };
 
 void sema_init(struct semaphore *, unsigned value);
@@ -22,11 +27,22 @@ struct semaphore_elem {
   struct semaphore semaphore; /* This semaphore. */
 };
 
+/* One semaphore in a list. */
+struct semaphore_elem {
+	struct list_elem elem;              /* List element. */
+	struct semaphore semaphore;         /* This semaphore. */
+};
+
 /* Lock. */
 struct lock {
+<<<<<<< HEAD
   struct thread
       *holder; /* 현재 Lock을 가지고 있는 thread 정보 (for debugging). */
   struct semaphore semaphore; /* Binary semaphore controlling access. */
+=======
+	struct thread *holder;      /* 현재 Lock을 가지고 있는 thread 정보 (for debugging). */
+	struct semaphore semaphore; /* Binary semaphore controlling access. */
+>>>>>>> 0984309b8ae8f80b6e36b72e57738cd237b05f88
 };
 
 void lock_init(struct lock *);
@@ -47,6 +63,9 @@ void cond_broadcast(struct condition *, struct lock *);
 
 bool cmp_sem_priority(const struct list_elem *a, const struct list_elem *b,
                       void *aux);
+
+bool cmp_sem_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
+void donate_priority(void);
 
 /* Optimization barrier.
  *

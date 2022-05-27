@@ -1,3 +1,9 @@
 {
+<<<<<<< HEAD
     "makefile.extensionOutputFolder": "./.vscode"
+=======
+    "files.associations": {
+        "exception.h": "c"
+    }
+>>>>>>> 0984309b8ae8f80b6e36b72e57738cd237b05f88
 }
