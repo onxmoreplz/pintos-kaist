@@ -204,7 +204,7 @@ tid_t thread_create(const char *name, int priority,
 	ASSERT(function != NULL);
 
 	/* Allocate thread. */
-	t = palloc_get_page(PAL_ZERO);
+	t = palloc_get_page(PAL_ZERO); // 커널 공간에 페이지 크기 4 KB 할당
 	if (t == NULL)
 		return TID_ERROR;
 
@@ -224,7 +224,7 @@ tid_t thread_create(const char *name, int priority,
 	t->tf.eflags = FLAG_IF;
 
 	/* Add to run queue. */
-	thread_unblock(t);
+	thread_unblock(t); // ready_list 로 넣어줌
 	thread_test_preemption();
 
 	return tid;
