@@ -1,0 +1,12 @@
+FAIL
+Kernel panic in run: PANIC at ../../threads/thread.c:323 in thread_yield(): assertion `!intr_context()' failed.
+Call stack: 0x8004217d2e 0x80042071d7 0x80042074f9 0x800420a00d 0x80042142f5 0x8004208e0c 0x800420922a 0x800420784e
+Translation of call stack:
+0x0000008004217d2e: debug_panic (lib/kernel/debug.c:32)
+0x00000080042071d7: thread_yield (threads/thread.c:325)
+0x00000080042074f9: thread_test_preemption (threads/thread.c:406)
+0x000000800420a00d: sema_up (threads/synch.c:125)
+0x00000080042142f5: interrupt_handler (devices/disk.c:526)
+0x0000008004208e0c: intr_handler (threads/interrupt.c:352)
+0x000000800420922a: intr_entry (threads/intr-stubs.o:?)
+0x000000800420784e: kernel_thread (threads/thread.c:577)
