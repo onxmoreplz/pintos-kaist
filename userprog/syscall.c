@@ -1,15 +1,58 @@
-#include "userprog/syscall.h"
-#include <stdio.h>
-#include <syscall-nr.h>
-#include "threads/interrupt.h"
-#include "threads/thread.h"
-#include "threads/loader.h"
-#include "userprog/gdt.h"
-#include "threads/flags.h"
-#include "intrinsic.h"
+#include "userprog/syscall.h"  //
 
-void syscall_entry (void);
-void syscall_handler (struct intr_frame *);
+#include <stdio.h>       //
+#include <syscall-nr.h>  //
+
+#include "intrinsic.h"
+#include "threads/flags.h"
+#include "threads/interrupt.h"  //
+#include "threads/loader.h"     //
+#include "threads/thread.h"     //
+#include "userprog/gdt.h"
+
+// add
+#include <list.h>
+
+#include "filesys/file.h"
+#include "filesys/filesys.h"
+#include "threads/palloc.h"
+#include "threads/vaddr.h"
+#include "userprog/process.h"
+
+void syscall_entry(void);
+void syscall_handler(struct intr_frame *);
+
+void check_address(uaddr);
+
+void halt(void);
+void exit(int status);
+bool create(const char *file, unsigned initial_size);
+bool remove(const char *file);
+
+int open(const char *file);
+int filesize(int fd);
+int read(int fd, void *buffer, unsigned size);
+int write(int fd, const void *buffer, unsigned size);
+
+int _write(int fd UNUSED, const void *buffer, unsigned size);
+
+void seek(int fd, unsigned position);
+unsigned tell(int fd);
+void close(int fd);
+int dup2(int oldfd, int newfd);
+
+tid_t fork(const char *thread_name, struct intr_frame *f);
+int exec(char *file_name);
+
+// Project 2-4 File Descriptor
+static struct file *find_file_by_fd(int fd);
+int add_file_to_fdt(struct file *file);
+void remove_file_from_fdt(int fd);
+// int exec (const char *cmd_line);
+
+/* Project2-extra */
+const int STDIN = 1;
+const int STDOUT = 2;
 
 /* System call.
  *
@@ -23,24 +66,275 @@ void syscall_handler (struct intr_frame *);
 #define MSR_STAR 0xc0000081         /* Segment selector msr */
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
+#define FDCOUNT_LIMIT (1 << 9)
 
-void
-syscall_init (void) {
-	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
-			((uint64_t)SEL_KCSEG) << 32);
-	write_msr(MSR_LSTAR, (uint64_t) syscall_entry);
+tid_t fork(const char *thread_name, struct intr_frame *f) {
+  return process_fork(thread_name, f);
+}
 
-	/* The interrupt service rountine should not serve any interrupts
-	 * until the syscall_entry swaps the userland stack to the kernel
-	 * mode stack. Therefore, we masked the FLAG_FL. */
-	write_msr(MSR_SYSCALL_MASK,
-			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+void syscall_init(void) {
+  write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48 | ((uint64_t)SEL_KCSEG)
+                                                               << 32);
+  write_msr(MSR_LSTAR, (uint64_t)syscall_entry);
+
+  /* The interrupt service rountine should not serve any interrupts
+   * until the syscall_entry swaps the userland stack to the kernel
+   * mode stack. Therefore, we masked the FLAG_FL. */
+  write_msr(MSR_SYSCALL_MASK,
+            FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+
+  lock_init(&file_rw_lock);
 }
 
 /* The main system call interface */
-void
-syscall_handler (struct intr_frame *f UNUSED) {
-	// TODO: Your implementation goes here.
-	printf ("system call!\n");
-	thread_exit ();
+void syscall_handler(struct intr_frame *f UNUSED) {
+  // TODO: Your implementation goes here.
+  // printf ("system call!\n");
+
+  char *fn_copy;
+
+  /*
+   x86-64 규약은 함수가 리턴하는 값을 rax 레지스터에 배치하는 것
+   값을 반환하는 시스템 콜은 intr_frame 구조체의 rax 멤버 수정으로 가능
+   */
+  switch (f->R.rax) {  // rax is the system call number
+    case SYS_HALT:
+      halt();  // pintos를 종료시키는 시스템 콜
+      break;
+    case SYS_EXIT:
+      exit(f->R.rdi);  // 현재 프로세스를 종료시키는 시스템 콜
+      break;
+    case SYS_FORK:
+      f->R.rax = fork(f->R.rdi, f);
+      break;
+    case SYS_EXEC:
+      if (exec(f->R.rdi) == -1) {
+        exit(-1);
+      }
+      break;
+    case SYS_WAIT:
+      f->R.rax = process_wait(f->R.rdi);
+      break;
+    case SYS_CREATE:
+      f->R.rax = create(f->R.rdi, f->R.rsi);
+      break;
+    case SYS_REMOVE:
+      f->R.rax = remove(f->R.rdi);
+      break;
+    case SYS_OPEN:
+      f->R.rax = open(f->R.rdi);
+      break;
+    case SYS_FILESIZE:
+      f->R.rax = filesize(f->R.rdi);
+      break;
+    case SYS_READ:
+      f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
+      break;
+    case SYS_WRITE:
+      f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
+      break;
+    case SYS_SEEK:
+      seek(f->R.rdi, f->R.rsi);
+      break;
+    case SYS_TELL:
+      f->R.rax = tell(f->R.rdi);
+      break;
+    case SYS_CLOSE:
+      close(f->R.rdi);
+      break;
+    default:
+      exit(-1);
+      break;
+  }
+  // thread_exit ();
+}
+
+void halt(void) { power_off(); }
+
+void exit(int status) {
+  /* 실행중인 스레드 구조체를 가져옴 */
+  /* 프로세스 종료 메시지 출력,
+  출력 양식: “프로세스이름: exit(종료상태)” */
+  /* 스레드 종료 */
+  struct thread *cur = thread_current();
+  cur->exit_status = status;
+
+  printf("%s: exit(%d)\n", thread_name(),
+         status);  // Process Termination Message
+  thread_exit();
+}
+
+static struct file *find_file_by_fd(int fd) {
+  struct thread *cur = thread_current();
+
+  if (fd < 0 || fd >= FDCOUNT_LIMIT) return NULL;
+
+  return cur->fdTable[fd];
+}
+
+int add_file_to_fdt(struct file *file) {
+  struct thread *cur = thread_current();
+  struct file **fdt = cur->fdTable;  // file descriptor table
+
+  // Project2-extra - (multi-oom) Find open spot from the front
+  while (cur->fdIdx < FDCOUNT_LIMIT && fdt[cur->fdIdx]) cur->fdIdx++;
+
+  // Error - fdt full
+  if (cur->fdIdx >= FDCOUNT_LIMIT) return -1;
+
+  fdt[cur->fdIdx] = file;
+  return cur->fdIdx;
+}
+
+void remove_file_from_fdt(int fd) {
+  struct thread *cur = thread_current();
+
+  if (fd < 0 || fd >= FDCOUNT_LIMIT) return;
+
+  cur->fdTable[fd] = NULL;
+}
+
+bool create(const char *file, unsigned initial_size) {
+  /* 파일 이름과 크기에 해당하는 파일 생성 */
+  /* 파일 생성 성공 시 true 반환, 실패 시 false 반환 */
+  check_address(file);
+  return filesys_create(file, initial_size);
+}
+
+bool remove(const char *file) {  // file: 제거할 파일의 이름 및 경로 정보
+  check_address(file);
+  return filesys_remove(file);
+}
+
+int exec(char *file_name) {
+  check_address(file_name);
+
+  int file_size = strlen(file_name) + 1;
+  char *fn_copy = palloc_get_page(PAL_ZERO);
+  if (fn_copy == NULL) {
+    exit(-1);
+  }
+  strlcpy(fn_copy, file_name, file_size);
+
+  if (process_exec(fn_copy) == -1) {
+    return -1;
+  }
+
+  NOT_REACHED();
+  return 0;
+}
+
+void check_address(const uint64_t *uaddr) {
+  struct thread *cur = thread_current();
+  if (uaddr == NULL || !(is_user_vaddr(uaddr)) ||
+      pml4_get_page(cur->pml4, uaddr) == NULL) {
+    exit(-1);
+  }
+}
+
+int open(const char *file) {
+  check_address(file);
+  struct file *fileobj = filesys_open(file);
+
+  if (fileobj == NULL) return -1;
+
+  int fd = add_file_to_fdt(fileobj);
+
+  if (fd == -1) file_close(fileobj);
+
+  return fd;
+}
+
+int filesize(int fd) {
+  struct file *fileobj = find_file_by_fd(fd);
+  if (fileobj == NULL) return -1;
+  return file_length(fileobj);
+}
+
+int read(int fd, void *buffer, unsigned size) {
+  check_address(buffer);
+  int ret;
+  struct thread *cur = thread_current();
+
+  struct file *fileobj = find_file_by_fd(fd);
+  if (fileobj == NULL) return -1;
+
+  if (fileobj == STDIN) {
+    if (cur->stdin_count == 0) {
+      // Not reachable
+      NOT_REACHED();
+      remove_file_from_fdt(fd);
+      ret = -1;
+    } else {
+      int i;
+      unsigned char *buf = buffer;
+      for (i = 0; i < size; i++) {
+        char c = input_getc();
+        *buf++ = c;
+        if (c == '\0') break;
+      }
+      ret = i;
+    }
+  } else if (fileobj == STDOUT) {
+    ret = -1;
+  } else {
+    lock_acquire(&file_rw_lock);
+    ret = file_read(fileobj, buffer, size);
+    lock_release(&file_rw_lock);
+  }
+  return ret;
+}
+
+int write(int fd, const void *buffer, unsigned size) {
+  check_address(buffer);
+
+  int write_result;
+  lock_acquire(&file_rw_lock);
+  if (fd == 1) {
+    putbuf(buffer, size);  // 문자열을 화면에 출력하는 함수
+    write_result = size;
+  } else {
+    if (find_file_by_fd(fd) != NULL) {
+      write_result = file_write(find_file_by_fd(fd), buffer, size);
+    } else {
+      write_result = -1;
+    }
+  }
+  lock_release(&file_rw_lock);
+  return write_result;
+}
+
+void seek(int fd, unsigned position) {
+  struct file *fileobj = find_file_by_fd(fd);
+  if (fileobj <= 2) return;
+  fileobj->pos = position;
+}
+
+unsigned tell(int fd) {
+  struct file *fileobj = find_file_by_fd(fd);
+  if (fileobj <= 2) return;
+  return file_tell(fileobj);
+}
+
+void close(int fd) {
+  struct file *fileobj = find_file_by_fd(fd);
+  if (fileobj == NULL) return;
+
+  struct thread *cur = thread_current();
+
+  // extra 라고함 - 홍욱형
+  if (fd == 0 || fileobj == STDIN) {
+    cur->stdin_count--;
+  } else if (fd == 1 || fileobj == STDOUT) {
+    cur->stdout_count--;
+  }
+  // extra 라고함 - 홍욱형
+
+  remove_file_from_fdt(fd);
+  if (fd <= 1 || fileobj <= 2) return;
+
+  if (fileobj->dupCount == 0)
+    file_close(fileobj);
+  else
+    fileobj->dupCount--;
 }

@@ -31,7 +31,7 @@ struct gp_registers {
 	uint64_t rdx;
 	uint64_t rcx;
 	uint64_t rbx;
-	uint64_t rax;
+	uint64_t rax; // 시스템콜 넘버가 들어감
 } __attribute__((packed));
 
 struct intr_frame {
