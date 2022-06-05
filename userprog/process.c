@@ -409,9 +409,12 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		bool writable);
 
 /* Loads an ELF executable from FILE_NAME into the current thread.
- * Stores the executable's entry point into *RIP
- * and its initial stack pointer into *RSP.
- * Returns true if successful, false otherwise. */
+   Stores the executable's entry point into *RIP
+   and its initial stack pointer into *RSP.
+   Returns true if successful, false otherwise.
+   = FILE_NAME에서 현재 스레드로 ELF 실행 파일을 로드합니다.
+   실행 파일의 진입점을 *RIP에 저장하고 초기 스택 포인터를 *RSP에 저장합니다.
+   성공하면 true, 그렇지 않으면 false를 반환합니다. */
 static bool
 load (const char *file_name, struct intr_frame *if_) {
 	struct thread *t = thread_current ();

@@ -1,5 +1,7 @@
 {
     "files.associations": {
-        "cstdlib": "c"
+        "cstdlib": "c",
+        "malloc.h": "c",
+        "*.inc": "c"
     }
 }

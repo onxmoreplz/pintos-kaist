@@ -327,7 +327,7 @@ write (int fd, const void *buffer, unsigned size) {
 		putbuf(buffer, size);		/* to print buffer strings on the display*/
 		ret = size;
 	}
-	/* STDOUT */
+	/* STDIN */
 	else if (fd == STDIN) {
 		ret = -1;
 	}
