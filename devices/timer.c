@@ -95,12 +95,14 @@ void timer_sleep(int64_t ticks_sleep)
 {
 	int64_t start = timer_ticks();
 
-	ASSERT(intr_get_level() == INTR_ON);
-	while (timer_elapsed(start) < ticks_sleep)
-		thread_yield();
+	ASSERT (intr_get_level () == INTR_ON);
 
-	/* thread를 sleep_list에 삽입 */
-	thread_sleep(start + ticks_sleep);
+	/* ---------- busy wait ---------- */
+	// while (timer_elapsed (start) < ticks)
+	// 	thread_yield ();
+
+	/* ------ project 1 alarm clock ------ */
+	thread_sleep(start + ticks);
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -136,14 +138,16 @@ void timer_print_stats(void)
 static void timer_interrupt(struct intr_frame *args UNUSED)
 {
 	ticks++;
-	thread_tick();
+	thread_tick ();
 
-	int64_t min_tick_in_sleep_list = get_next_tick_to_awake(); 
-
-	if (ticks >= min_tick_in_sleep_list)
-	{
-		thread_awake(ticks); // 매 tick마다 sleep_list에서 꺠어날 Thread 있는지 확인, 꺠우는 함수 호출
+	/* --------- project 1 --------- */
+	int64_t next;
+	next = get_next_tick_to_awake();
+	
+	if (next <= ticks) {
+		thread_awake(ticks);
 	}
+	/* ----------------------------- */
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
