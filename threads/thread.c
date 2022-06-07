@@ -63,7 +63,6 @@ static int64_t next_tick_to_awake; /* the earliest awake time in sleep list */
 bool thread_mlfqs;
 
 static void kernel_thread(thread_func *, void *aux);
-
 static void idle(void *aux UNUSED);
 static struct thread *next_thread_to_run(void);
 static void init_thread(struct thread *, const char *name, int priority);
@@ -282,7 +281,6 @@ void thread_unblock(struct thread *t)
 
 	list_push_back(&ready_list, &t->elem);
 	t->status = THREAD_READY;
-
 	intr_set_level(old_level);
 }
 
@@ -322,7 +320,6 @@ tid_t thread_tid(void)
 void thread_exit(void)
 {
 	ASSERT(!intr_context()); // True : during processing of an external interrupt
-
 #ifdef USERPROG
 	process_exit();
 #endif
